@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import os
+import re
 import argparse
 
 from boto import ec2
@@ -32,12 +33,16 @@ def get_snapshots_from_images(images):
     return snapshot_ids
 
 
-def diff_snapshots(all_snapshots, used_snapshot_ids):
-    '''Get the snapshots that are not used in an AMI.'''
+def diff_snapshots(all_snapshots, used_snapshot_ids, filter):
+    '''Get the snapshots that are not used in an AMI,
+    plus an additional filter.'''
 
     out = []
     for snapshot in all_snapshots:
-        if snapshot.id not in used_snapshot_ids:
+        # print "\Trying:", c.OKBLUE, snapshot.id, c.ENDC,
+        # print snapshot.description
+        if snapshot.id not in used_snapshot_ids and \
+                re.search(filter, snapshot.description):
             out.append(snapshot)
     return out
 
@@ -47,7 +52,8 @@ def cleanup_snapshots(snapshots, dry_run=False):
 
     print "\tDeleting:", c.OKGREEN, len(snapshots), c.ENDC, "snapshots"
     for snapshot in snapshots:
-        print "\tDeleting:", c.OKBLUE, snapshot.id, c.ENDC
+        print "\tDeleting:", c.OKBLUE, snapshot.id, c.ENDC,
+        print snapshot.description
         try:
             out = snapshot.delete(True)
             print out
@@ -61,12 +67,15 @@ def main():
         description='Garbage collect snapshots unattached to AMIs.')
     parser.add_argument('--user-id', action='store', required=True,
                         help='The AWS user id for the owner of the images.')
+    parser.add_argument('--filter', action='store',
+                        help='Filter the images to delete by a regex.')
     parser.add_argument('--dry-run', action='store_true', default=False,
                         help='Don\'t actually delete the snapshots.')
     args = parser.parse_args()
 
     DRY_RUN = args.dry_run
     AWS_USER_ID = args.user_id
+    FILTER = args.filter
     AWS_ACCESS_KEY = os.environ.get('AWS_ACCESS_KEY')
     AWS_SECRET_KEY = os.environ.get('AWS_SECRET_KEY')
     SUPPORTED_REGIONS = ["us-east-1", "us-west-1", "us-west-2"]
@@ -122,7 +131,11 @@ def main():
         except Exception, e:
             print "\t", c.WARNING, "Error:", e.message, c.ENDC
 
-        diffed_snapshots = diff_snapshots(all_snapshots, used_snapshot_ids)
+        diffed_snapshots = diff_snapshots(
+            all_snapshots,
+            used_snapshot_ids,
+            filter=FILTER
+            )
         cleanup_snapshots(diffed_snapshots, dry_run=DRY_RUN)
 
 if __name__ == "__main__":
