@@ -39,7 +39,7 @@ def diff_snapshots(all_snapshots, used_snapshot_ids, filter):
 
     out = []
     for snapshot in all_snapshots:
-        # print "\Trying:", c.OKBLUE, snapshot.id, c.ENDC,
+        # print "\tTrying:", c.OKBLUE, snapshot.id, c.ENDC,
         # print snapshot.description
         if snapshot.id not in used_snapshot_ids and \
                 re.search(filter, snapshot.description):
@@ -51,14 +51,17 @@ def cleanup_snapshots(snapshots, dry_run=False):
     '''Delete the unused snapshots.'''
 
     print "\tDeleting:", c.OKGREEN, len(snapshots), c.ENDC, "snapshots"
+    cleanup_count = 0
     for snapshot in snapshots:
         print "\tDeleting:", c.OKBLUE, snapshot.id, c.ENDC,
         print snapshot.description
         try:
             out = snapshot.delete(True)
             print out
+            cleanup_count += 1
         except Exception, e:
             print "\t\tError:", c.WARNING, e.message, c.ENDC
+    return cleanup_count
 
 
 def main():
@@ -81,6 +84,7 @@ def main():
     SUPPORTED_REGIONS = ["us-east-1", "us-west-1", "us-west-2"]
 
     regions = ec2.regions()
+    cleanup_count = 0
     for region in regions:
         if region.name not in SUPPORTED_REGIONS:
             print "Skipping", c.OKBLUE, region.name, c.ENDC
@@ -103,7 +107,8 @@ def main():
                 # filters=["tag:Component="],
                 dry_run=False
                 )
-            print "\t", "Found:", c.OKGREEN, len(images), c.ENDC, "images"
+            print "\t", "Found:", c.OKGREEN, len(images), c.ENDC,
+            print "snapshots in images"
             used_snapshot_ids = get_snapshots_from_images(images)
 
         except Exception, e:
@@ -118,16 +123,6 @@ def main():
             print "\t", "Found:", c.OKGREEN, len(all_snapshots),
             print c.ENDC, "snapshots"
 
-            used_snapshots = conn.get_all_snapshots(
-                snapshot_ids=used_snapshot_ids,
-                owner=[AWS_USER_ID, "self"],  # or self
-                # restorable_by=None,
-                # filters=None,
-                dry_run=False
-                )
-            print "\t", "Found:", c.OKGREEN, len(used_snapshots),
-            print c.ENDC, "used snapshots"
-
         except Exception, e:
             print "\t", c.WARNING, "Error:", e.message, c.ENDC
 
@@ -136,7 +131,9 @@ def main():
             used_snapshot_ids,
             filter=FILTER
             )
-        cleanup_snapshots(diffed_snapshots, dry_run=DRY_RUN)
+        cleanup_count += cleanup_snapshots(diffed_snapshots, dry_run=DRY_RUN)
+
+    print "Deleted", c.OKGREEN, cleanup_count, c.ENDC, "snapshots"
 
 if __name__ == "__main__":
     main()
